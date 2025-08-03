@@ -21,8 +21,8 @@ def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
 
-def file_exists(path):
-    return Path(path).exists()
+def file_exists_with_basename(directory: Path, base_name: str) -> bool:
+    return any(f.stem == base_name for f in directory.iterdir() if f.is_file())
 
 
 def download_source(source_url, base_download_dir, task_id):
@@ -64,27 +64,18 @@ def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
     encoding = ep.get('encoding', 'av1')
     format_ext = ep.get('format')  # could be None
 
-    encoded_filename = f"{full_name} {suffix}"
+    base_filename = f"{full_name} {suffix}"
 
-    if format_ext:
-        output_ext = format_ext
-    else:
-        # fallback to downloaded file format
-        output_ext = None
-
-    final_output_path = target_dir / f"{encoded_filename}.{format_ext if format_ext else 'mkv'}"
-
-    if file_exists(final_output_path):
-        print(f"[{task_id}] Skipping {final_output_path}, already exists.")
+    if file_exists_with_basename(target_dir, base_filename):
+        print(f"[{task_id}] Skipping {base_filename}, already exists in {target_dir}.")
         return
 
     print(f"[{task_id}] Downloading episode to: {downloaded_dir}")
     input_file = download_source(source, downloaded_dir, task_id)
 
-    if not output_ext:
-        output_ext = input_file.suffix.lstrip('.')
-
+    output_ext = format_ext if format_ext else input_file.suffix.lstrip('.')
     output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
+    final_output_path = target_dir / f"{base_filename}.{output_ext}"
 
     encode_video(str(input_file), str(output_encoded), profile=encoding, task_id=task_id)
 
