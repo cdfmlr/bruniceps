@@ -30,6 +30,61 @@ def encode_video(input_path: str, output_path: str, codec: str):
     subprocess.run(['ffmpeg', '-i', input_path, '-c:v', codec, output_path], check=True)
 
 
+def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
+    suffix = ep['suffix']
+    source = ep['source']
+    encoding = ep.get('encoding', 'av1')
+    format_ext = ep.get('format', None)
+
+    encoded_filename = f"{full_name} {suffix}"
+    output_file_ext = format_ext if format_ext else 'mkv'
+    final_output_path = target_dir / f"{encoded_filename}.{output_file_ext}"
+
+    if file_exists(final_output_path):
+        print(f"Skipping {final_output_path}, already exists.")
+        return
+
+    print(f"Downloading episode to: {downloaded_dir}")
+    download_magnet(source, str(downloaded_dir))
+
+    downloaded_files = sorted(downloaded_dir.glob('*'), key=os.path.getmtime, reverse=True)
+    if not downloaded_files:
+        print("Download failed or no file found.")
+        return
+    input_file = downloaded_files[0]
+
+    output_ext = format_ext if format_ext else input_file.suffix[1:]
+    output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
+
+    if encoding == 'original':
+        shutil.copy(input_file, output_encoded)
+    else:
+        encode_video(str(input_file), str(output_encoded), codec='libaom-av1')
+
+    ensure_dir(target_dir)
+    shutil.move(str(output_encoded), str(final_output_path))
+    print(f"Moved to {final_output_path}")
+
+    input_file.unlink()
+
+
+def process_media_entries(entries, media_root, downloaded_dir, encoded_dir):
+    for key, show in entries.items():
+        full_name = show['FullName']
+        target_dir = media_root / full_name
+        ensure_dir(target_dir)
+
+        episodes = show.get('Episodes') or show.get('Episodeds', [])
+        for ep in episodes:
+            process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir)
+
+
+def clean_tmp_dirs(*dirs):
+    for d in dirs:
+        print(f"Cleaning {d}")
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def sync():
     config = load_config()
     tmp_dir = Path(config['tmpDir'])
@@ -41,63 +96,10 @@ def sync():
     ensure_dir(downloaded_dir)
     ensure_dir(encoded_dir)
 
-    def handle_entries(entries, media_root):
-        for key, show in entries.items():
-            full_name = show['FullName']
-            target_dir = media_root / full_name
-            ensure_dir(target_dir)
+    process_media_entries(config.get('tv', {}), tv_dir, downloaded_dir, encoded_dir)
+    process_media_entries(config.get('movie', {}), movie_dir, downloaded_dir, encoded_dir)
 
-            episodes = show.get('Episodes') or show.get('Episodeds', [])  # typo fallback
-            for ep in episodes:
-                suffix = ep['suffix']
-                source = ep['source']
-                encoding = ep.get('encoding', 'av1')
-                format_ext = ep.get('format', None)
-
-                # Filename before encoding (assumes aria2 saves with default name)
-                encoded_filename = f"{full_name} {suffix}"
-                output_file_ext = format_ext if format_ext else 'mkv'  # fallback
-                final_output_path = target_dir / f"{encoded_filename}.{output_file_ext}"
-
-                if file_exists(final_output_path):
-                    print(f"Skipping {final_output_path}, already exists.")
-                    continue
-
-                # Download to downloaded_dir
-                print(f"Downloading episode to: {downloaded_dir}")
-                download_magnet(source, str(downloaded_dir))
-
-                # Find the downloaded file
-                downloaded_files = sorted(downloaded_dir.glob('*'), key=os.path.getmtime, reverse=True)
-                if not downloaded_files:
-                    print("Download failed or no file found.")
-                    continue
-                input_file = downloaded_files[0]  # assume most recent is the one
-
-                # Set encoded output path
-                output_ext = format_ext if format_ext else input_file.suffix[1:]
-                output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
-
-                # Encode or copy
-                if encoding == 'original':
-                    shutil.copy(input_file, output_encoded)
-                else:
-                    encode_video(str(input_file), str(output_encoded), codec='libaom-av1')
-
-                # Move to final destination
-                ensure_dir(target_dir)
-                shutil.move(str(output_encoded), str(final_output_path))
-                print(f"Moved to {final_output_path}")
-
-                # Clean downloaded file
-                input_file.unlink()
-
-    handle_entries(config.get('tv', {}), tv_dir)
-    handle_entries(config.get('movie', {}), movie_dir)
-
-    print("Cleaning temporary directories")
-    shutil.rmtree(downloaded_dir, ignore_errors=True)
-    shutil.rmtree(encoded_dir, ignore_errors=True)
+    clean_tmp_dirs(downloaded_dir, encoded_dir)
 
 
 def main():
