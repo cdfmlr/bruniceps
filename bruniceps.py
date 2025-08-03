@@ -25,8 +25,8 @@ def file_exists(path):
     return Path(path).exists()
 
 
-def download_source(source_url, base_download_dir):
-    task_dir = Path(base_download_dir) / str(uuid.uuid4())
+def download_source(source_url, base_download_dir, task_id):
+    task_dir = Path(base_download_dir) / task_id
     ensure_dir(task_dir)
     print(f"Downloading: {source_url} to {task_dir}")
 
@@ -48,8 +48,8 @@ def download_source(source_url, base_download_dir):
     return latest_file
 
 
-def encode_video(input_path: str, output_path: str, profile: str):
-    print(f"Encoding: {input_path} -> {output_path} with profile {profile}")
+def encode_video(input_path: str, output_path: str, profile: str, task_id: str):
+    print(f"[{task_id}] Encoding: {input_path} -> {output_path} with profile {profile}")
     encoding_args = ENCODING_PROFILES.get(profile)
     if not encoding_args:
         shutil.copy(input_path, output_path)
@@ -58,33 +58,41 @@ def encode_video(input_path: str, output_path: str, profile: str):
 
 
 def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
+    task_id = str(uuid.uuid4())
     suffix = ep['suffix']
     source = ep['source']
     encoding = ep.get('encoding', 'av1')
-    format_ext = ep.get('format', None)
+    format_ext = ep.get('format')  # could be None
 
     encoded_filename = f"{full_name} {suffix}"
-    output_file_ext = format_ext if format_ext else 'mkv'
-    final_output_path = target_dir / f"{encoded_filename}.{output_file_ext}"
+
+    if format_ext:
+        output_ext = format_ext
+    else:
+        # fallback to downloaded file format
+        output_ext = None
+
+    final_output_path = target_dir / f"{encoded_filename}.{format_ext if format_ext else 'mkv'}"
 
     if file_exists(final_output_path):
-        print(f"Skipping {final_output_path}, already exists.")
+        print(f"[{task_id}] Skipping {final_output_path}, already exists.")
         return
 
-    print(f"Downloading episode to: {downloaded_dir}")
-    input_file = download_source(source, downloaded_dir)
+    print(f"[{task_id}] Downloading episode to: {downloaded_dir}")
+    input_file = download_source(source, downloaded_dir, task_id)
 
-    output_ext = format_ext if format_ext else input_file.suffix.lstrip('.')
+    if not output_ext:
+        output_ext = input_file.suffix.lstrip('.')
+
     output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
 
-    encode_video(str(input_file), str(output_encoded), profile=encoding)
+    encode_video(str(input_file), str(output_encoded), profile=encoding, task_id=task_id)
 
     ensure_dir(target_dir)
     shutil.move(str(output_encoded), str(final_output_path))
-    print(f"Moved to {final_output_path}")
+    print(f"[{task_id}] Moved to {final_output_path}")
 
     input_file.unlink()
-    # Also clean up the task directory
     try:
         task_dir = input_file.parent
         task_dir.rmdir()
