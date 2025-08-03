@@ -2,6 +2,7 @@ import subprocess
 import os
 import shutil
 import yaml
+import uuid
 from pathlib import Path
 
 CONFIG_FILE = 'bruniceps.yaml'
@@ -24,14 +25,25 @@ def file_exists(path):
     return Path(path).exists()
 
 
-def download_source(source_url, output_dir):
-    print(f"Downloading: {source_url}")
-    result = subprocess.run(['aria2c', '--dir=' + output_dir, '--summary-interval=0', '--show-console-readout=false', '--auto-file-renaming=false', '--allow-overwrite=true', source_url], check=True, capture_output=True, text=True)
+def download_source(source_url, base_download_dir):
+    task_dir = Path(base_download_dir) / str(uuid.uuid4())
+    ensure_dir(task_dir)
+    print(f"Downloading: {source_url} to {task_dir}")
 
-    # Parse output dir contents before and after for accurate filename
-    files = list(Path(output_dir).iterdir())
+    subprocess.run([
+        'aria2c',
+        '--dir=' + str(task_dir),
+        '--summary-interval=0',
+        '--show-console-readout=false',
+        '--auto-file-renaming=false',
+        '--allow-overwrite=true',
+        source_url
+    ], check=True)
+
+    files = list(task_dir.iterdir())
     if not files:
         raise FileNotFoundError("No files downloaded")
+
     latest_file = max(files, key=lambda f: f.stat().st_mtime)
     return latest_file
 
@@ -60,7 +72,7 @@ def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
         return
 
     print(f"Downloading episode to: {downloaded_dir}")
-    input_file = download_source(source, str(downloaded_dir))
+    input_file = download_source(source, downloaded_dir)
 
     output_ext = format_ext if format_ext else input_file.suffix.lstrip('.')
     output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
@@ -72,6 +84,12 @@ def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
     print(f"Moved to {final_output_path}")
 
     input_file.unlink()
+    # Also clean up the task directory
+    try:
+        task_dir = input_file.parent
+        task_dir.rmdir()
+    except Exception:
+        pass
 
 
 def process_media_entries(entries, media_root, downloaded_dir, encoded_dir):
@@ -105,7 +123,7 @@ def sync():
     process_media_entries(config.get('tv', {}), tv_dir, downloaded_dir, encoded_dir)
     process_media_entries(config.get('movie', {}), movie_dir, downloaded_dir, encoded_dir)
 
-    clean_tmp_dirs(downloaded_dir, encoded_dir)
+    clean_tmp_dirs(encoded_dir)
 
 
 def main():
