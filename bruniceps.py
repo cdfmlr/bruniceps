@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import subprocess
 import os
 import shutil
@@ -6,6 +8,9 @@ import uuid
 from pathlib import Path
 
 CONFIG_FILE = 'bruniceps.yaml'
+
+ARIA2C = "aria2c -s16 -x16 -k1M --seed-time=0 --file-allocation=none"
+FFMPEG = "ffmpeg -hide_banner"
 
 ENCODING_PROFILES = {
     'av1': ['-map', '0', '-c:v', 'libsvtav1', '-crf', '32', '-c:a', 'aac', '-ac', '2', '-c:s', 'copy'],
@@ -30,11 +35,10 @@ def download_source(source_url, base_download_dir, task_id):
     ensure_dir(task_dir)
     print(f"Downloading: {source_url} to {task_dir}")
 
-    subprocess.run([
-        'aria2c',
+    subprocess.run(ARIA2C.split() + [
         '--dir=' + str(task_dir),
-        '--summary-interval=0',
-        '--show-console-readout=false',
+        #'--summary-interval=0',
+        #'--show-console-readout=false',
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
         source_url
@@ -54,7 +58,7 @@ def encode_video(input_path: str, output_path: str, profile: str, task_id: str):
     if not encoding_args:
         shutil.copy(input_path, output_path)
     else:
-        subprocess.run(['ffmpeg', '-i', input_path] + encoding_args + [output_path], check=True)
+        subprocess.run(FFMPEG.split() + ['-i', input_path] + encoding_args + [output_path], check=True)
 
 
 def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
