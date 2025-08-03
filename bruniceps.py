@@ -6,6 +6,10 @@ from pathlib import Path
 
 CONFIG_FILE = 'bruniceps.yaml'
 
+ENCODING_PROFILES = {
+    'av1': ['-map', '0', '-c:v', 'libsvtav1', '-crf', '32', '-c:a', 'aac', '-ac', '2', '-c:s', 'copy'],
+    'original': None
+}
 
 def load_config():
     with open(CONFIG_FILE, 'r') as f:
@@ -20,14 +24,25 @@ def file_exists(path):
     return Path(path).exists()
 
 
-def download_magnet(magnet_link, output_dir):
-    print(f"Downloading: {magnet_link}")
-    subprocess.run(['aria2c', '--dir=' + output_dir, magnet_link], check=True)
+def download_source(source_url, output_dir):
+    print(f"Downloading: {source_url}")
+    result = subprocess.run(['aria2c', '--dir=' + output_dir, '--summary-interval=0', '--show-console-readout=false', '--auto-file-renaming=false', '--allow-overwrite=true', source_url], check=True, capture_output=True, text=True)
+
+    # Parse output dir contents before and after for accurate filename
+    files = list(Path(output_dir).iterdir())
+    if not files:
+        raise FileNotFoundError("No files downloaded")
+    latest_file = max(files, key=lambda f: f.stat().st_mtime)
+    return latest_file
 
 
-def encode_video(input_path: str, output_path: str, codec: str):
-    print(f"Encoding: {input_path} -> {output_path} with codec {codec}")
-    subprocess.run(['ffmpeg', '-i', input_path, '-c:v', codec, output_path], check=True)
+def encode_video(input_path: str, output_path: str, profile: str):
+    print(f"Encoding: {input_path} -> {output_path} with profile {profile}")
+    encoding_args = ENCODING_PROFILES.get(profile)
+    if not encoding_args:
+        shutil.copy(input_path, output_path)
+    else:
+        subprocess.run(['ffmpeg', '-i', input_path] + encoding_args + [output_path], check=True)
 
 
 def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
@@ -45,21 +60,12 @@ def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
         return
 
     print(f"Downloading episode to: {downloaded_dir}")
-    download_magnet(source, str(downloaded_dir))
+    input_file = download_source(source, str(downloaded_dir))
 
-    downloaded_files = sorted(downloaded_dir.glob('*'), key=os.path.getmtime, reverse=True)
-    if not downloaded_files:
-        print("Download failed or no file found.")
-        return
-    input_file = downloaded_files[0]
-
-    output_ext = format_ext if format_ext else input_file.suffix[1:]
+    output_ext = format_ext if format_ext else input_file.suffix.lstrip('.')
     output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
 
-    if encoding == 'original':
-        shutil.copy(input_file, output_encoded)
-    else:
-        encode_video(str(input_file), str(output_encoded), codec='libaom-av1')
+    encode_video(str(input_file), str(output_encoded), profile=encoding)
 
     ensure_dir(target_dir)
     shutil.move(str(output_encoded), str(final_output_path))
