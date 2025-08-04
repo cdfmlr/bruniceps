@@ -83,7 +83,7 @@ def ensure_dir(path):
 def file_exists_with_basename(directory: Path, base_name: str) -> bool:
     return any(f.stem == base_name for f in directory.iterdir() if f.is_file())
 
-def download_source(source_url, output_dir: Path, aria2c_cmd: str):
+def download_source(source_url, output_dir: Path, aria2c_cmd: str) -> Path:
     subprocess.run(aria2c_cmd.split() + [
         '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
@@ -127,13 +127,13 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
         return
 
     # 1. Download it
-    
+
     task_dir = Path(meta.tmp_dir) / task_id
 
     downloaded_dir = task_dir / "downloaded"
     ensure_dir(downloaded_dir)
 
-    print(f"[{task_id}] Downloading to {downloaded_file} from {ep.source} by {meta.aria2c_cmd}")
+    print(f"[{task_id}] Downloading to {downloaded_dir} from {ep.source} by {meta.aria2c_cmd}")
     downloaded_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
 
     # 2. Encode it
@@ -159,7 +159,7 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Done: {target_file}")
 
     # 4. Clear the tmp dir
-    
+
     print(f"[{task_id}] Clearing temp task working dir: {task_dir}")
     clear_task_dir(task_dir)
 
