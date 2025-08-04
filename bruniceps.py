@@ -7,9 +7,7 @@ import yaml  # python3 -m pip install pyyaml
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional, Dict
-import uuid
-import sys
-import os
+import argparse
 
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
 
@@ -85,12 +83,12 @@ def ensure_dir(path):
 def file_exists_with_basename(directory: Path, base_name: str) -> bool:
     return any(f.stem == base_name for f in directory.iterdir() if f.is_file())
 
-def download_source(source_url, task_dir: Path, aria2c_cmd: str):
-    ensure_dir(task_dir)
-    print(f"Downloading: {source_url} to {task_dir}")
+def download_source(source_url, output_dir: Path, aria2c_cmd: str):
+    ensure_dir(output_dir)
+    print(f"Downloading: {source_url} to {output_dir}")
 
     subprocess.run(aria2c_cmd.split() + [
-        '--dir=' + str(task_dir),
+        '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
         #'--summary-interval=0',
@@ -98,30 +96,33 @@ def download_source(source_url, task_dir: Path, aria2c_cmd: str):
         source_url
     ], check=True)
 
-    files = list(task_dir.iterdir())
+    files = list(output_dir.iterdir())
     if not files:
         raise FileNotFoundError("No files downloaded")
 
     latest_file = max(files, key=lambda f: f.stat().st_mtime)
     return latest_file
 
-def encode_video(input_path: str, output_path: str, profile: str, task_id: str, ffmpeg_cmd: str, encoding_profiles: Dict[str, Optional[str]]):
-    print(f"[{task_id}] Encoding: {input_path} -> {output_path} with profile {profile}")
-    encoding_args = encoding_profiles.get(profile)
+def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[str], ffmpeg_cmd: str):
     if not encoding_args:
         shutil.copy(input_path, output_path)
     else:
-        subprocess.run(ffmpeg_cmd.split() + ['-i', input_path] + encoding_args.split() + [output_path], check=True)
+        subprocess.run(ffmpeg_cmd.split() + ['-i', str(input_path)] + encoding_args.split() + [str(output_path)], check=True)
 
-def process_episode(series: Series, ep: Episode, catalog: Catalog, meta: MetaConfig):
+def clear_task_dir(task_dir: Path):
+    try:
+        shutil.rmtree(task_dir)
+    except Exception as e:
+        print(f"Warning: Failed to clean temp dir {task_dir}: {e}")
+
+def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaConfig):
     task_id = f"{series.key}_{ep.key}"
     base_filename = f"{series.title} {ep.key}"
-
     target_dir = Path(catalog.base_dir) / series.title
     ensure_dir(target_dir)
 
     if file_exists_with_basename(target_dir, base_filename):
-        print(f"[{task_id}] Skipping {base_filename}, already exists in {target_dir}.")
+        print(f"[{task_id}] Skipping, already exists.")
         return
 
     task_dir = Path(meta.tmp_dir) / task_id
@@ -130,31 +131,28 @@ def process_episode(series: Series, ep: Episode, catalog: Catalog, meta: MetaCon
     ensure_dir(downloaded_dir)
     ensure_dir(encoded_dir)
 
-    input_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
-    output_ext = ep.format if ep.format else input_file.suffix.lstrip('.')
-    output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
-    final_output_path = target_dir / f"{base_filename}.{output_ext}"
+    downloaded_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
 
-    encode_video(str(input_file), str(output_encoded), ep.encoding, task_id, meta.ffmpeg_cmd, meta.encoding_profiles)
+    ext = ep.format if ep.format else downloaded_file.suffix.lstrip('.')
+    encoded_file = encoded_dir / f"{downloaded_file.stem}_encoded.{ext}"
+    target_file = target_dir / f"{base_filename}.{ext}"
 
-    shutil.move(str(output_encoded), str(final_output_path))
-    print(f"[{task_id}] Moved to {final_output_path}")
+    encoding_args = meta.encoding_profiles.get(ep.encoding)
+    print(f"[{task_id}] Encoding {downloaded_file} to {encoded_file}")
+    encode_video(downloaded_file, encoded_file, encoding_args, meta.ffmpeg_cmd)
 
-    input_file.unlink()
-    try:
-        input_file.parent.rmdir()
-    except Exception:
-        pass
+    shutil.move(str(encoded_file), str(target_file))
+    print(f"[{task_id}] Moved to {target_file}")
+
+    clear_task_dir(task_dir)
 
 def sync(config: Config):
     for series in config.series:
         catalog = config.meta.catalogs[series.catalog]
         for ep in series.episodes:
-            process_episode(series, ep, catalog, config.meta)
+            process_episode(ep, series, catalog, config.meta)
 
 def main():
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["sync"], help="Command to run")
     parser.add_argument("-c", "--config", help="Path to config file")
