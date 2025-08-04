@@ -1,29 +1,32 @@
 tmpDir: "/path/to/DownloadingAndEncodingWorkDir"
-tvDir: "/path/to/tvs"
-movieDir: "/path/to/movies"
 
-# a episode will be download to {tvDir}/{FullName}/"{FullName} {suffix}.{format}"
+media:
+  tv:
+    base_dir: "/path/to/tvs"
+  movie:
+    base_dir: "/path/to/movies"
+
+# a episode will be download to {media.base_dir}/{media_entry.title}/"{media_entry.title} {episode.key}.{epidode.format}"
 tv:
   konoSubaS03:
-    FullName: "Kono Subarashii Sekai ni Shukufuku wo"
-    Episodes:
-      - suffix: S03E01
+    title: "Kono Subarashii Sekai ni Shukufuku wo"
+    episodes:
+      - key: S03E01
         source: "magnet:..."
         encoding: original|av1
         format: mp4|mkv
-      - suffix: S03E01
+      - key: S03E01
         source: "magnet:..."
   monoS01:
-    FullName: "mono"
-    Episodeds:
-      - suffix: S01E01
+    title: "mono"
+    episodes:
+      - key: S01E01
         source: "magnet:..."
 
 # movie is actaully the same to tv
 movie:
   evaNT3:
-    FullName: "Evangelion 3.0_1.01 Thrice Upon a Time"
-    Episodes:
-      - suffix: "[1080p][en_US]"
+    title: "Evangelion 3.0_1.01 Thrice Upon a Time"
+    episodes:
+      - key: "[1080p][en_US]"
         source: "magnet:..."
-

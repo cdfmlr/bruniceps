@@ -20,7 +20,7 @@ ENCODING_PROFILES = {
 
 @dataclass
 class Episode:
-    suffix: str
+    key: str
     source: str
     encoding: str = 'av1'
     format: Optional[str] = None
@@ -28,17 +28,18 @@ class Episode:
 @dataclass
 class MediaEntry:
     key: str
-    full_name: str
+    title: str
     episodes: List[Episode]
+    media_type: str
 
 def parse_config(config: Dict) -> List[MediaEntry]:
     entries = []
 
     for media_type in ('tv', 'movie'):
         for key, val in config.get(media_type, {}).items():
-            episodes_raw = val.get('Episodes') or []
+            episodes_raw = val.get('episodes') or []
             episodes = [Episode(**ep) for ep in episodes_raw]
-            entries.append(MediaEntry(key=key, full_name=val['FullName'], episodes=episodes))
+            entries.append(MediaEntry(key=key, title=val['title'], episodes=episodes, media_type=media_type))
 
     return entries
 
@@ -82,8 +83,8 @@ def encode_video(input_path: str, output_path: str, profile: str, task_id: str):
         subprocess.run(FFMPEG.split() + ['-i', input_path] + encoding_args + [output_path], check=True)
 
 def process_episode(entry: MediaEntry, ep: Episode, target_dir: Path, downloaded_dir: Path, encoded_dir: Path):
-    task_id = f"{entry.key}_{ep.suffix}"
-    base_filename = f"{entry.full_name} {ep.suffix}"
+    task_id = f"{entry.key}_{ep.key}"
+    base_filename = f"{entry.title} {ep.key}"
 
     if file_exists_with_basename(target_dir, base_filename):
         print(f"[{task_id}] Skipping {base_filename}, already exists in {target_dir}.")
@@ -108,10 +109,10 @@ def process_episode(entry: MediaEntry, ep: Episode, target_dir: Path, downloaded
     except Exception:
         pass
 
-def process_all_entries(entries: List[MediaEntry], tv_dir: Path, movie_dir: Path, downloaded_dir: Path, encoded_dir: Path):
+def process_all_entries(entries: List[MediaEntry], media_config: Dict, downloaded_dir: Path, encoded_dir: Path):
     for entry in entries:
-        target_root = tv_dir if entry.key in config.get('tv', {}) else movie_dir
-        target_dir = target_root / entry.full_name
+        base_dir = Path(media_config[entry.media_type]['base_dir'])
+        target_dir = base_dir / entry.title
         ensure_dir(target_dir)
 
         for ep in entry.episodes:
@@ -128,15 +129,14 @@ def sync():
     entries = parse_config(config)
 
     tmp_dir = Path(config['tmpDir'])
-    tv_dir = Path(config['tvDir'])
-    movie_dir = Path(config['movieDir'])
+    media_config = config['media']
     downloaded_dir = tmp_dir / 'downloaded'
     encoded_dir = tmp_dir / 'encoded'
 
     ensure_dir(downloaded_dir)
     ensure_dir(encoded_dir)
 
-    process_all_entries(entries, tv_dir, movie_dir, downloaded_dir, encoded_dir)
+    process_all_entries(entries, media_config, downloaded_dir, encoded_dir)
 
     clean_tmp_dirs(encoded_dir)
 
