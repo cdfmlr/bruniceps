@@ -40,8 +40,13 @@ class MetaConfig:
     encoding_profiles: Dict[str, Optional[str]]
     catalogs: Dict[str, Catalog]
 
-def parse_config(config: Dict) -> (MetaConfig, List[Series]):
-    meta_raw = config.get('meta', {})
+@dataclass
+class Config:
+    meta: MetaConfig
+    series: List[Series]
+
+def parse_config(raw: Dict) -> Config:
+    meta_raw = raw.get('meta', {})
     catalogs_raw = meta_raw.get('catalogs', {})
     catalogs = {
         k: Catalog(key=k, base_dir=v['base_dir'])
@@ -61,17 +66,18 @@ def parse_config(config: Dict) -> (MetaConfig, List[Series]):
     )
 
     series_list = []
-    for key, val in config.get('series', {}).items():
+    for key, val in raw.get('series', {}).items():
         episodes_raw = val.get('episodes') or []
         episodes = [Episode(**ep) for ep in episodes_raw]
         series_list.append(Series(key=key, title=val['title'], catalog=val['catalog'], episodes=episodes))
 
-    return meta, series_list
+    return Config(meta=meta, series=series_list)
 
-def load_config(path=None):
+def load_config(path=None) -> Config:
     config_path = path or os.environ.get("BRUNICEPS_CONFIG", DEFAULT_CONFIG_FILE)
     with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+        raw = yaml.safe_load(f)
+    return parse_config(raw)
 
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
@@ -79,8 +85,7 @@ def ensure_dir(path):
 def file_exists_with_basename(directory: Path, base_name: str) -> bool:
     return any(f.stem == base_name for f in directory.iterdir() if f.is_file())
 
-def download_source(source_url, base_download_dir, task_id, aria2c_cmd):
-    task_dir = Path(base_download_dir) / str(uuid.uuid4())
+def download_source(source_url, task_dir: Path, aria2c_cmd: str):
     ensure_dir(task_dir)
     print(f"Downloading: {source_url} to {task_dir}")
 
@@ -108,7 +113,7 @@ def encode_video(input_path: str, output_path: str, profile: str, task_id: str, 
     else:
         subprocess.run(ffmpeg_cmd.split() + ['-i', input_path] + encoding_args.split() + [output_path], check=True)
 
-def process_episode(series: Series, ep: Episode, catalog: Catalog, downloaded_dir: Path, encoded_dir: Path, meta: MetaConfig):
+def process_episode(series: Series, ep: Episode, catalog: Catalog, meta: MetaConfig):
     task_id = f"{series.key}_{ep.key}"
     base_filename = f"{series.title} {ep.key}"
 
@@ -119,7 +124,13 @@ def process_episode(series: Series, ep: Episode, catalog: Catalog, downloaded_di
         print(f"[{task_id}] Skipping {base_filename}, already exists in {target_dir}.")
         return
 
-    input_file = download_source(ep.source, downloaded_dir, task_id, meta.aria2c_cmd)
+    task_dir = Path(meta.tmp_dir) / task_id
+    downloaded_dir = task_dir / "downloaded"
+    encoded_dir = task_dir / "encoded"
+    ensure_dir(downloaded_dir)
+    ensure_dir(encoded_dir)
+
+    input_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
     output_ext = ep.format if ep.format else input_file.suffix.lstrip('.')
     output_encoded = encoded_dir / f"{input_file.stem}_encoded.{output_ext}"
     final_output_path = target_dir / f"{base_filename}.{output_ext}"
@@ -135,44 +146,24 @@ def process_episode(series: Series, ep: Episode, catalog: Catalog, downloaded_di
     except Exception:
         pass
 
-def process_all_series(series_list: List[Series], meta: MetaConfig, downloaded_dir: Path, encoded_dir: Path):
-    for series in series_list:
-        catalog = meta.catalogs[series.catalog]
+def sync(config: Config):
+    for series in config.series:
+        catalog = config.meta.catalogs[series.catalog]
         for ep in series.episodes:
-            process_episode(series, ep, catalog, downloaded_dir, encoded_dir, meta)
-
-def clean_tmp_dirs(*dirs):
-    for d in dirs:
-        print(f"Cleaning {d}")
-        shutil.rmtree(d, ignore_errors=True)
-
-def sync(config_path=None):
-    config = load_config(config_path)
-    meta, series_list = parse_config(config)
-
-    tmp_dir = Path(meta.tmp_dir)
-    downloaded_dir = tmp_dir / 'downloaded'
-    encoded_dir = tmp_dir / 'encoded'
-
-    ensure_dir(downloaded_dir)
-    ensure_dir(encoded_dir)
-
-    process_all_series(series_list, meta, downloaded_dir, encoded_dir)
-
-    clean_tmp_dirs(encoded_dir)
+            process_episode(series, ep, catalog, config.meta)
 
 def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("sync", nargs='?', help="Sync the series")
+    parser.add_argument("command", choices=["sync"], help="Command to run")
     parser.add_argument("-c", "--config", help="Path to config file")
     args = parser.parse_args()
 
-    if args.sync == "sync":
-        sync(args.config)
-    else:
-        print("Usage: bruniceps sync [-c CONFIG_FILE]")
+    config = load_config(args.config)
+
+    if args.command == "sync":
+        sync(config)
 
 if __name__ == '__main__':
     main()
