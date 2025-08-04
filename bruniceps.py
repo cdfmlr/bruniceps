@@ -84,9 +84,6 @@ def file_exists_with_basename(directory: Path, base_name: str) -> bool:
     return any(f.stem == base_name for f in directory.iterdir() if f.is_file())
 
 def download_source(source_url, output_dir: Path, aria2c_cmd: str):
-    ensure_dir(output_dir)
-    print(f"Downloading: {source_url} to {output_dir}")
-
     subprocess.run(aria2c_cmd.split() + [
         '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
@@ -116,34 +113,54 @@ def clear_task_dir(task_dir: Path):
         print(f"Warning: Failed to clean temp dir {task_dir}: {e}")
 
 def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaConfig):
-    task_id = f"{series.key}_{ep.key}"
+    task_id = f"{series.key}-{ep.key}"
+
+    # 0. Check if already exists. 
+
     base_filename = f"{series.title} {ep.key}"
+
     target_dir = Path(catalog.base_dir) / series.title
     ensure_dir(target_dir)
 
     if file_exists_with_basename(target_dir, base_filename):
-        print(f"[{task_id}] Skipping, already exists.")
+        print(f"[{task_id}] Skipping, target ({base_filename}) already exists in {target_dir}.")
         return
 
+    # 1. Download it
+    
     task_dir = Path(meta.tmp_dir) / task_id
-    downloaded_dir = task_dir / "downloaded"
-    encoded_dir = task_dir / "encoded"
-    ensure_dir(downloaded_dir)
-    ensure_dir(encoded_dir)
 
+    downloaded_dir = task_dir / "downloaded"
+    ensure_dir(downloaded_dir)
+
+    print(f"[{task_id}] Downloading to {downloaded_file} from {ep.source} by {meta.aria2c_cmd}")
     downloaded_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
+
+    # 2. Encode it
+
+    encoded_dir = task_dir / "encoded"
+    ensure_dir(encoded_dir)
 
     ext = ep.format if ep.format else downloaded_file.suffix.lstrip('.')
     encoded_file = encoded_dir / f"{downloaded_file.stem}_encoded.{ext}"
-    target_file = target_dir / f"{base_filename}.{ext}"
 
     encoding_args = meta.encoding_profiles.get(ep.encoding)
-    print(f"[{task_id}] Encoding {downloaded_file} to {encoded_file}")
+
+    print(f"[{task_id}] Encoding {downloaded_file} to {encoded_file} by {meta.ffmpeg_cmd}")
     encode_video(downloaded_file, encoded_file, encoding_args, meta.ffmpeg_cmd)
 
-    shutil.move(str(encoded_file), str(target_file))
-    print(f"[{task_id}] Moved to {target_file}")
+    # 3. Move it to the target
 
+    target_file = target_dir / f"{base_filename}.{ext}"
+
+    print(f"[{task_id}] Moving {encoded_file} to {target_file}")
+    shutil.copy(str(encoded_file), str(target_file))
+
+    print(f"[{task_id}] Done: {target_file}")
+
+    # 4. Clear the tmp dir
+    
+    print(f"[{task_id}] Clearing temp task working dir: {task_dir}")
     clear_task_dir(task_dir)
 
 def sync(config: Config):
