@@ -3,7 +3,7 @@
 import subprocess
 import os
 import shutil
-import yaml
+import yaml  # python3 -m pip install pyyaml
 import uuid
 from pathlib import Path
 
@@ -62,7 +62,8 @@ def encode_video(input_path: str, output_path: str, profile: str, task_id: str):
 
 
 def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
-    task_id = str(uuid.uuid4())
+    task_id = str(uuid.uuid4())  # TODO: use a reproducable hash instead.
+
     suffix = ep['suffix']
     source = ep['source']
     encoding = ep.get('encoding', 'av1')
@@ -74,7 +75,7 @@ def process_episode(ep, full_name, target_dir, downloaded_dir, encoded_dir):
         print(f"[{task_id}] Skipping {base_filename}, already exists in {target_dir}.")
         return
 
-    print(f"[{task_id}] Downloading episode to: {downloaded_dir}")
+    print(f"[{task_id}] Downloading episode {base_filename} to: {downloaded_dir}")
     input_file = download_source(source, downloaded_dir, task_id)
 
     output_ext = format_ext if format_ext else input_file.suffix.lstrip('.')
