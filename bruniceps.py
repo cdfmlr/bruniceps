@@ -11,9 +11,11 @@ import argparse
 import tempfile
 
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
-
+DEFAULT_ARIA2C_CMD = "aria2c"
+DEFAULT_FFMPEG_CMD = "ffmpeg"
+DEFAULT_TMP_DIR = Path(tempfile.gettempdir()) / "bruniceps"
 DEFAULT_ENCODING_PROFILES = {
-    "default": "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy",
+    "default": "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy", # av1
     "original": None
 }
 
@@ -61,12 +63,12 @@ def parse_config(raw: Dict) -> Config:
     for item in meta_raw.get('encoding_profiles', []):
         encoding_profiles.update(item)
 
-    tmp_dir = Path(meta_raw.get('tmp_dir') or tempfile.gettempdir())
+    tmp_dir = Path(meta_raw.get('tmp_dir') or DEFAULT_TMP_DIR)
 
     meta = MetaConfig(
         tmp_dir=tmp_dir,
-        aria2c_cmd=meta_raw.get('aria2c_cmd', 'aria2c'),
-        ffmpeg_cmd=meta_raw.get('ffmpeg_cmd', 'ffmpeg'),
+        aria2c_cmd=meta_raw.get('aria2c_cmd', DEFAULT_ARIA2C_CMD),
+        ffmpeg_cmd=meta_raw.get('ffmpeg_cmd', DEFAULT_FFMPEG_CMD),
         encoding_profiles=encoding_profiles,
         catalogs=catalogs
     )

@@ -3,8 +3,10 @@ meta:
   aria2c_cmd: "aria2c -s16 -x16 -k1M --seed-time=0 --file-allocation=none"
   ffmpeg_cmd: "ffmpeg -hide_banner"
   encoding_profiles:
+    ## default values:
+    ## - default: "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy"
+    ## - original: null
     - av1: "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy"
-    - original: null
   catalogs:
     tv:
       base_dir: "/path/to/tvs"
