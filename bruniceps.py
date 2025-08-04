@@ -10,14 +10,6 @@ from typing import List, Optional, Dict
 
 CONFIG_FILE = 'bruniceps.yaml'
 
-ARIA2C = "aria2c -s16 -x16 -k1M --seed-time=0 --file-allocation=none"
-FFMPEG = "ffmpeg -hide_banner"
-
-ENCODING_PROFILES = {
-    'av1': ['-map', '0', '-c:v', 'libsvtav1', '-crf', '32', '-c:a', 'aac', '-ac', '2', '-c:s', 'copy'],
-    'original': None
-}
-
 @dataclass
 class Episode:
     key: str
@@ -32,16 +24,56 @@ class MediaEntry:
     episodes: List[Episode]
     media_type: str
 
-def parse_config(config: Dict) -> List[MediaEntry]:
-    entries = []
+@dataclass
+class Catalog:
+    base_dir: str
 
-    for media_type in ('tv', 'movie'):
-        for key, val in config.get(media_type, {}).items():
+@dataclass
+class MetaConfig:
+    tmp_dir: str
+    aria2c_cmd: str
+    ffmpeg_cmd: str
+    encoding_profiles: Dict[str, Optional[str]]
+    catalogs: Dict[str, Catalog]
+
+ARIA2C = None
+FFMPEG = None
+ENCODING_PROFILES = {}
+
+def parse_config(config: Dict) -> (MetaConfig, List[MediaEntry]):
+    global ARIA2C, FFMPEG, ENCODING_PROFILES
+
+    meta_raw = config.get('_meta_', {})
+    catalogs = {k: Catalog(**v) for k, v in meta_raw.get('catalogs', {}).items()}
+
+    encoding_profiles = {}
+    for item in meta_raw.get('encoding_profiles', []):
+        encoding_profiles.update(item)
+
+    meta = MetaConfig(
+        tmp_dir=meta_raw['tmp_dir'],
+        aria2c_cmd=meta_raw['aria2c_cmd'],
+        ffmpeg_cmd=meta_raw['ffmpeg_cmd'],
+        encoding_profiles=encoding_profiles,
+        catalogs=catalogs
+    )
+
+    ARIA2C = meta.aria2c_cmd
+    FFMPEG = meta.ffmpeg_cmd
+    ENCODING_PROFILES = {
+        k: None if v is None else v.split() for k, v in meta.encoding_profiles.items()
+    }
+
+    entries = []
+    for media_type, media_items in config.items():
+        if media_type.startswith('_') or media_type not in meta.catalogs:
+            continue
+        for key, val in media_items.items():
             episodes_raw = val.get('episodes') or []
             episodes = [Episode(**ep) for ep in episodes_raw]
             entries.append(MediaEntry(key=key, title=val['title'], episodes=episodes, media_type=media_type))
 
-    return entries
+    return meta, entries
 
 def load_config():
     with open(CONFIG_FILE, 'r') as f:
@@ -109,9 +141,9 @@ def process_episode(entry: MediaEntry, ep: Episode, target_dir: Path, downloaded
     except Exception:
         pass
 
-def process_all_entries(entries: List[MediaEntry], media_config: Dict, downloaded_dir: Path, encoded_dir: Path):
+def process_all_entries(entries: List[MediaEntry], catalogs: Dict[str, Catalog], downloaded_dir: Path, encoded_dir: Path):
     for entry in entries:
-        base_dir = Path(media_config[entry.media_type]['base_dir'])
+        base_dir = Path(catalogs[entry.media_type].base_dir)
         target_dir = base_dir / entry.title
         ensure_dir(target_dir)
 
@@ -126,17 +158,16 @@ def clean_tmp_dirs(*dirs):
 def sync():
     global config
     config = load_config()
-    entries = parse_config(config)
+    meta, entries = parse_config(config)
 
-    tmp_dir = Path(config['tmpDir'])
-    media_config = config['media']
+    tmp_dir = Path(meta.tmp_dir)
     downloaded_dir = tmp_dir / 'downloaded'
     encoded_dir = tmp_dir / 'encoded'
 
     ensure_dir(downloaded_dir)
     ensure_dir(encoded_dir)
 
-    process_all_entries(entries, media_config, downloaded_dir, encoded_dir)
+    process_all_entries(entries, meta.catalogs, downloaded_dir, encoded_dir)
 
     clean_tmp_dirs(encoded_dir)
 

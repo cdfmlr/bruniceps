@@ -1,10 +1,15 @@
-tmpDir: "/path/to/DownloadingAndEncodingWorkDir"
-
-media:
-  tv:
-    base_dir: "/path/to/tvs"
-  movie:
-    base_dir: "/path/to/movies"
+_meta_:
+  tmp_dir: "/path/to/DownloadingAndEncodingWorkDir"
+  aria2c_cmd: "aria2c -s16 -x16 -k1M --seed-time=0 --file-allocation=none"
+  ffmpeg_cmd: "ffmpeg -hide_banner"
+  encoding_profiles:
+    - av1: "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy"
+    - original: null
+  catalogs:
+    tv:
+      base_dir: "/path/to/tvs"
+    movie:
+      base_dir: "/path/to/movies"
 
 # a episode will be download to {media.base_dir}/{media_entry.title}/"{media_entry.title} {episode.key}.{epidode.format}"
 tv:
