@@ -36,7 +36,7 @@ def parse_config(config: Dict) -> List[MediaEntry]:
 
     for media_type in ('tv', 'movie'):
         for key, val in config.get(media_type, {}).items():
-            episodes_raw = val.get('Episodes') or val.get('Episodeds') or []
+            episodes_raw = val.get('Episodes') or []
             episodes = [Episode(**ep) for ep in episodes_raw]
             entries.append(MediaEntry(key=key, full_name=val['FullName'], episodes=episodes))
 
@@ -61,6 +61,8 @@ def download_source(source_url, base_download_dir, task_id):
         '--dir=' + str(task_dir),
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
+        #'--summary-interval=0',
+        #'--show-console-readout=false',
         source_url
     ], check=True)
 
