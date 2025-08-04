@@ -1,4 +1,4 @@
-_meta_:
+meta:
   tmp_dir: "/path/to/DownloadingAndEncodingWorkDir"
   aria2c_cmd: "aria2c -s16 -x16 -k1M --seed-time=0 --file-allocation=none"
   ffmpeg_cmd: "ffmpeg -hide_banner"
@@ -11,10 +11,12 @@ _meta_:
     movie:
       base_dir: "/path/to/movies"
 
-# a episode will be download to {media.base_dir}/{media_entry.title}/"{media_entry.title} {episode.key}.{epidode.format}"
-tv:
+# catalogs > series > episodes
+# a episode will be download to {catalog.base_dir}/{series.title}/"{series.title} {episode.key}.{epidode.format}"
+series:
   konoSubaS03:
     title: "Kono Subarashii Sekai ni Shukufuku wo"
+    catalog: tv
     episodes:
       - key: S03E01
         source: "magnet:..."
@@ -24,14 +26,13 @@ tv:
         source: "magnet:..."
   monoS01:
     title: "mono"
+    catalog: tv
     episodes:
       - key: S01E01
         source: "magnet:..."
-
-# movie is actaully the same to tv
-movie:
   evaNT3:
     title: "Evangelion 3.0_1.01 Thrice Upon a Time"
+    catalog: movie
     episodes:
       - key: "[1080p][en_US]"
         source: "magnet:..."
