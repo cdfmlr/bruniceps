@@ -8,14 +8,20 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional, Dict
 import argparse
+import tempfile
 
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
+
+DEFAULT_ENCODING_PROFILES = {
+    "default": "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy",
+    "original": None
+}
 
 @dataclass
 class Episode:
     key: str
     source: str
-    encoding: str = 'av1'
+    encoding: str = 'default'
     format: Optional[str] = None
 
 @dataclass
@@ -28,11 +34,11 @@ class Series:
 @dataclass
 class Catalog:
     key: str
-    base_dir: str
+    base_dir: Path
 
 @dataclass
 class MetaConfig:
-    tmp_dir: str
+    tmp_dir: Path
     aria2c_cmd: str
     ffmpeg_cmd: str
     encoding_profiles: Dict[str, Optional[str]]
@@ -47,18 +53,20 @@ def parse_config(raw: Dict) -> Config:
     meta_raw = raw.get('meta', {})
     catalogs_raw = meta_raw.get('catalogs', {})
     catalogs = {
-        k: Catalog(key=k, base_dir=v['base_dir'])
+        k: Catalog(key=k, base_dir=Path(v['base_dir']))
         for k, v in catalogs_raw.items()
     }
 
-    encoding_profiles = {}
+    encoding_profiles = DEFAULT_ENCODING_PROFILES.copy()
     for item in meta_raw.get('encoding_profiles', []):
         encoding_profiles.update(item)
 
+    tmp_dir = Path(meta_raw.get('tmp_dir') or tempfile.gettempdir())
+
     meta = MetaConfig(
-        tmp_dir=meta_raw['tmp_dir'],
-        aria2c_cmd=meta_raw['aria2c_cmd'],
-        ffmpeg_cmd=meta_raw['ffmpeg_cmd'],
+        tmp_dir=tmp_dir,
+        aria2c_cmd=meta_raw.get('aria2c_cmd', 'aria2c'),
+        ffmpeg_cmd=meta_raw.get('ffmpeg_cmd', 'ffmpeg'),
         encoding_profiles=encoding_profiles,
         catalogs=catalogs
     )
