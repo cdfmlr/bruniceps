@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
-import subprocess
+import argparse
 import os
 import shutil
-import yaml  # python3 -m pip install pyyaml
-from pathlib import Path
-from dataclasses import dataclass
-from typing import List, Optional, Dict
-import argparse
+import subprocess
 import tempfile
+from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
+from typing import List, Optional, Dict
+
+import yaml  # python3 -m pip install pyyaml
 
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
 DEFAULT_ARIA2C_CMD = "aria2c"
@@ -21,6 +23,8 @@ DEFAULT_ENCODING_PROFILES = {
 CONFIG_ENV_VAR = "BRUNICEPS_CONFIG"
 # splitter to multiple config files
 CONFIG_PATH_SPLITTER = ","
+
+print = partial(print, flush=True)
 
 
 @dataclass
