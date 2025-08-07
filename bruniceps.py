@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass, asdict
 from functools import partial
@@ -123,19 +124,44 @@ def parse_config(raw: Dict) -> Config:
 def load_config(paths: str) -> Config:
     """
     load_config read YAML files in paths.
+
     Multiple config supported by paths str split by comma, files will be merged
-    in the order (later is prior).
+    in the order (latter is prior).
+
+    Dirs are recursively walked: all existing YAML files in them will be
+    treated as config files, sorted in alphabetical order.
 
     :arg paths: a str of "path/to/config-file-0.yaml,path/to/config-file-1.yaml,..."
     """
-    raw = {}
-    for config_path in paths.split(CONFIG_PATH_SPLITTER):
-        config_path = config_path.strip()
-        # tolerant towards tailing "," and ",," typo
-        # should be friendly to `-c "$(find config -type f -name '*.yaml' | tr '\n' ',')"` and `-c "$(ls -xm *.yaml)"`.
-        if not config_path:
+    # config_paths may be files or dirs
+    config_paths: List[str] = paths.split(CONFIG_PATH_SPLITTER)
+
+    # config_files are files:
+    # all yaml files in dirs will be found out and included there.
+    config_files: List[Path] = []
+
+    for config_path in config_paths:
+        if not config_path:  # tolerant towards tailing "," and consecutive ",,"
             continue
-        with open(config_path, 'r') as f:
+
+        config_path = Path(config_path.strip())
+
+        if not config_path.exists():
+            raise FileNotFoundError(config_path)
+
+        if config_path.is_file():
+            config_files.append(config_path)
+        elif config_path.is_dir():
+            # order: 01, 1, 11, 2, 3, 31, 8, 9, 99
+            config_files.extend(sorted(config_path.rglob("*.yaml")))
+        else:
+            warnings.warn(f"{config_path=} is neither a file nor a directory. "
+                          "Assuming it is a file (may cause trouble).")
+            config_files.append(config_path)
+
+    raw = {}  # config in a dict
+    for config_file in config_files:
+        with open(config_file, 'r') as f:
             part = yaml.safe_load(f)
             _deep_merge_dict(part, raw)
 
@@ -339,11 +365,15 @@ def dry_run(config: Config):
 
 def main():
     parser = argparse.ArgumentParser(prog="bruniceps", description=__doc__)
-    parser.add_argument("-c", "--config", help="path to config file, "
-                                               "multiple files (split by comma) are supported "
-                                               "(later is prior, e.g. -c \"base.yaml,override.yaml\"). "
-                                               f"Environment variable: {CONFIG_ENV_VAR}. "
-                                               f"Defaults to \"{DEFAULT_CONFIG_FILE}\"")
+    parser.add_argument("-c", "--config",
+                        help="path to config file, "
+                             "multiple files (split by comma) are supported "
+                             "(later is prior, e.g. -c \"base.yaml, override.yaml\"). "
+                             "Dirs are supported: every YAML file in the subtree "
+                             "are treated as config files "
+                             "(files under dir are sorted in alphabetical order). "
+                             f"Environment variable: {CONFIG_ENV_VAR}. "
+                             f"Defaults to \"{DEFAULT_CONFIG_FILE}\"")
 
     subcommands = parser.add_subparsers(title="subcommands",
                                         dest="subcommands",  # for args.subcommands below
