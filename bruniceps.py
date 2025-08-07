@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
+"""
+bruniceps is a tool for managing tv series and other media resources.
+"""
 
 import argparse
 import os
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, asdict
 from functools import partial
-from pathlib import Path
+from pathlib import Path, PosixPath, WindowsPath
 from typing import List, Optional, Dict
 
 import yaml  # python3 -m pip install pyyaml
+from yaml.representer import BaseRepresenter
 
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
 DEFAULT_ARIA2C_CMD = "aria2c"
@@ -179,6 +184,44 @@ def _deep_merge_dict(source: Dict, destination: Dict) -> Dict:
     return destination
 
 
+def spprint_config(config: Config) -> str:
+    config = deepcopy(config)
+
+    # ellipsis the episodes source url: "|<-64->|..."
+    # commonly they are shown as `    source: ---URL---`, so 64 makes cols = 12+63+3 < 80.
+    for series in config.series:
+        for episode in series.episodes:
+            s = episode.source
+            episode.source = s[:64] + (s[64:] and '...')
+
+    # covert to dict
+    config = asdict(config)
+
+    # fix cannot represent an object PosixPath
+    class AnyRepresenter(BaseRepresenter):
+        def represent_any_as_str(self, data):
+            return self.represent_scalar('tag:yaml.org,2002:str', str(data))
+
+    try:
+        for p in [Path, PosixPath, WindowsPath]:
+            yaml.SafeDumper.add_representer(p, AnyRepresenter.represent_any_as_str)
+    except:
+        pass
+
+    # covert to YAML str
+    try:
+        config_str = yaml.safe_dump(config, sort_keys=False)
+    except yaml.error.YAMLError as exc:
+        # fallback: print it anyway
+        config_str = f"error: {exc}\nconfig: {config}\n"
+
+    return "\n".join([
+        "### BEGIN BRUNICEPS CONFIG ###\n",
+        config_str,
+        "### END BRUNICEPS CONFIG ###",
+    ])
+
+
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
@@ -278,26 +321,48 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
 
 
 def sync(config: Config):
+    """subcommand sync downloads, encodes and moves episodes/movies
+    defined in configuration file into destination directories.
+    Skips any media that already exists at the destination.
+    """
     for series in config.series:
         catalog = config.meta.catalogs[series.catalog]
         for ep in series.episodes:
             process_episode(ep, series, catalog, config.meta)
 
 
+def dry_run(config: Config):
+    """subcommand dry-run prints the loaded config and exit."""
+    print("[dry-run] Config loaded:\n\n", spprint_config(config), sep="", end="\n\n")
+    print("[dry-run] done.")
+
+
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["sync"], help="Command to run")
-    parser.add_argument("-c", "--config", help="Path to config file, "
+    parser = argparse.ArgumentParser(prog="bruniceps", description=__doc__)
+    parser.add_argument("-c", "--config", help="path to config file, "
                                                "multiple files (split by comma) are supported "
-                                               "(later is prior, e.g. -c \"base.yaml,override.yaml\"), "
-                                               "defaults to \"bruniceps.yaml\"")
+                                               "(later is prior, e.g. -c \"base.yaml,override.yaml\"). "
+                                               f"Environment variable: {CONFIG_ENV_VAR}. "
+                                               "Defaults to \"bruniceps.yaml\"")
+
+    subcommands = parser.add_subparsers(title="subcommands",
+                                        dest="subcommands",  # for args.subcommands below
+                                        help="use \"bruniceps <subcommand> -h\" for more information about that topic.")
+
+    subcommands_sync = subcommands.add_parser("sync", description=sync.__doc__)
+    # subcommands_sync.add_argument("-d", help="example to add more args to sync")
+    subcommands_dry_run = subcommands.add_parser("dry-run", description=dry_run.__doc__)
+
     args = parser.parse_args()
 
     config_paths = args.config or os.environ.get(CONFIG_ENV_VAR) or DEFAULT_CONFIG_FILE
     config = load_config(config_paths)
 
-    if args.command == "sync":
-        sync(config)
+    match args.subcommands:
+        case "sync":
+            sync(config)
+        case "dry-run":
+            dry_run(config)
 
 
 if __name__ == '__main__':
