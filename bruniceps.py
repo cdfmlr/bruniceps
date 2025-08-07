@@ -18,6 +18,9 @@ DEFAULT_ENCODING_PROFILES = {
     "default": "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy",  # av1
     "original": None
 }
+CONFIG_ENV_VAR = "BRUNICEPS_CONFIG"
+# splitter to multiple config files
+CONFIG_PATH_SPLITTER = ","
 
 
 @dataclass
@@ -108,10 +111,21 @@ def parse_config(raw: Dict) -> Config:
     return Config(meta=meta, series=series_list)
 
 
-def load_config(path=None) -> Config:
-    config_path = path or os.environ.get("BRUNICEPS_CONFIG", DEFAULT_CONFIG_FILE)
-    with open(config_path, 'r') as f:
-        raw = yaml.safe_load(f)
+def load_config(paths: str) -> Config:
+    """
+    load_config read YAML files in paths.
+    Multiple config supported by paths str split by comma, files will be merged
+    in the order (later is prior).
+
+    :arg paths: a str of "path/to/config-file-0.yaml,path/to/config-file-1.yaml,..."
+    """
+    raw = {}
+    for config_path in paths.split(CONFIG_PATH_SPLITTER):
+        config_path = config_path.strip()
+        with open(config_path, 'r') as f:
+            part = yaml.safe_load(f)
+            raw.update(part)
+
     return parse_config(raw)
 
 
@@ -223,10 +237,13 @@ def sync(config: Config):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["sync"], help="Command to run")
-    parser.add_argument("-c", "--config", help="Path to config file")
+    parser.add_argument("-c", "--config", help="Path to config file, "
+                                               "multiple files (split by comma) are supported (later is prior, e.g. -c \"base.yaml,override.yaml\"), "
+                                               "defaults to \"bruniceps.yaml\"")
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    config_paths = args.config or os.environ.get(CONFIG_ENV_VAR) or DEFAULT_CONFIG_FILE
+    config = load_config(config_paths)
 
     if args.command == "sync":
         sync(config)
