@@ -343,7 +343,7 @@ def main():
                                                "multiple files (split by comma) are supported "
                                                "(later is prior, e.g. -c \"base.yaml,override.yaml\"). "
                                                f"Environment variable: {CONFIG_ENV_VAR}. "
-                                               "Defaults to \"bruniceps.yaml\"")
+                                               f"Defaults to \"{DEFAULT_CONFIG_FILE}\"")
 
     subcommands = parser.add_subparsers(title="subcommands",
                                         dest="subcommands",  # for args.subcommands below
