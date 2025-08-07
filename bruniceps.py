@@ -132,9 +132,51 @@ def load_config(paths: str) -> Config:
             continue
         with open(config_path, 'r') as f:
             part = yaml.safe_load(f)
-            raw.update(part)
+            _deep_merge_dict(part, raw)
 
     return parse_config(raw)
+
+
+def _deep_merge_dict(source: Dict, destination: Dict) -> Dict:
+    """
+    Deep merge two dictionaries: source into destination.
+    For conflicts, prefer source's non-zero values over destination's.
+    (By non-zero, we mean that bool(value) is True.)
+
+    Stolen from https://github.com/apache/libcloud/blob/c899034cf3a8f719eb27a0a8027b5ffe191135ef/libcloud/compute/drivers/kubevirt.py#L2020
+
+    Example::
+
+        >>> a = {"domain": {"devices": 0}, "volumes": [1, 2, 3], "network": {}}
+        >>> b = {"domain": {"machine": "non-exist-in-a", "devices": 1024}, "volumes": [4, 5, 6]}
+        >>> _deep_merge_dict(a, b)
+        {'domain': {'machine': 'non-exist-in-a', 'devices': 1024}, 'volumes': [1, 2, 3], 'network': {}}
+
+    In the above example:
+
+    - network: exists in source (a) but not in destination (b): add source (a)'s
+    - volumes: exists in both, both are non-zero: prefer source (a)'s
+    - devices: exists in both: source (a) is zero, destination (b) is non-zero: keep destination (b)'s
+    - machine: exists in destination (b) but not in source (a): reserve destination (b)'s
+
+    :param source: RO: A dict to be merged into another.
+                   Do not use circular dict (e.g. d = {}; d['d'] = d) as source,
+                   otherwise a RecursionError will be raised.
+    :param destination: RW: A dict to be merged into. (the value will be modified).
+
+    :return: dict: Updated destination.
+    """
+
+    for key, value in source.items():
+        if isinstance(value, dict):  # recurse for dicts
+            node = destination.setdefault(key, {})  # get node or create one
+            _deep_merge_dict(value, node)
+        elif key not in destination:  # not existing in destination: add it
+            destination[key] = value
+        elif value:  # existing: update if source's value is non-zero
+            destination[key] = value
+
+    return destination
 
 
 def ensure_dir(path):
@@ -246,7 +288,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=["sync"], help="Command to run")
     parser.add_argument("-c", "--config", help="Path to config file, "
-                                               "multiple files (split by comma) are supported (later is prior, e.g. -c \"base.yaml,override.yaml\"), "
+                                               "multiple files (split by comma) are supported "
+                                               "(later is prior, e.g. -c \"base.yaml,override.yaml\"), "
                                                "defaults to \"bruniceps.yaml\"")
     args = parser.parse_args()
 
