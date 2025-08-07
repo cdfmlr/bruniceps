@@ -26,7 +26,7 @@ class Episode:
     source: str
     encoding: str = 'default'
     format: Optional[str] = None
-    base_dir: Optional[Path] = None  # episode.base_dir overrides series.base_dir and the default {catalog.base_dir}/{series.title}
+    dir: Optional[Path] = None  # episode.dir overrides series.dir and the default {catalog.dir}/{series.title}
 
 
 @dataclass
@@ -34,14 +34,14 @@ class Series:
     key: str
     title: str
     catalog: str
-    base_dir: Optional[Path]  # series.base_dir overrides the default {catalog.base_dir}/{series.title}
+    dir: Optional[Path]  # series.dir overrides the default {catalog.dir}/{series.title}
     episodes: List[Episode]
 
 
 @dataclass
 class Catalog:
     key: str
-    base_dir: Path
+    dir: Path
 
 
 @dataclass
@@ -63,7 +63,7 @@ def parse_config(raw: Dict) -> Config:
     meta_raw = raw.get('meta', {})
     catalogs_raw = meta_raw.get('catalogs', {})
     catalogs = {
-        k: Catalog(key=k, base_dir=Path(v['base_dir']))
+        k: Catalog(key=k, dir=Path(v['dir']))
         for k, v in catalogs_raw.items()
     }
 
@@ -85,24 +85,24 @@ def parse_config(raw: Dict) -> Config:
     for key, val in raw.get('series', {}).items():
         episodes_raw = val.get('episodes') or []
 
-        series_base_dir = val.get('base_dir', None)
-        if series_base_dir is not None:
-            series_base_dir = Path(series_base_dir)
+        series_dir = val.get('dir', None)
+        if series_dir is not None:
+            series_dir = Path(series_dir)
 
         episodes = [Episode(**ep) for ep in episodes_raw]
 
-        def ensure_episode_base_dir(ep: Episode) -> Episode:
-            if ep.base_dir is not None:
-                ep.base_dir = Path(ep.base_dir)
+        def ensure_episode_dir(ep: Episode) -> Episode:
+            if ep.dir is not None:
+                ep.dir = Path(ep.dir)
             return ep
 
-        episodes = list(map(ensure_episode_base_dir, episodes))
+        episodes = list(map(ensure_episode_dir, episodes))
 
         series_list.append(Series(
             key=key,
             title=val['title'],
             catalog=val['catalog'],
-            base_dir=series_base_dir,
+            dir=series_dir,
             episodes=episodes))
 
     return Config(meta=meta, series=series_list)
@@ -163,11 +163,11 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
 
     base_filename = f"{series.title} {ep.key}"
 
-    target_dir = Path(catalog.base_dir) / series.title
-    if series.base_dir:
-        target_dir = Path(series.base_dir)
-    if ep.base_dir:
-        target_dir = Path(ep.base_dir)
+    target_dir = Path(catalog.dir) / series.title
+    if series.dir:
+        target_dir = Path(series.dir)
+    if ep.dir:
+        target_dir = Path(ep.dir)
 
     ensure_dir(target_dir)
 
