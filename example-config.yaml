@@ -19,11 +19,15 @@ series:
   konoSubaS03:
     title: "Kono Subarashii Sekai ni Shukufuku wo"
     catalog: tv
+    # series.base_dir overrides catalog.base_dir
+    base_dir: "/path/to/tvs/konoSuba/season-03"
     episodes:
       - key: S03E01
         source: "magnet:..."
         encoding: original|av1
         format: mp4|mkv
+        # episode.base_dir overrides series.base_dir & catalog.base_dir
+        base_dir: "/put/this/episode/to/somewhere/special"
       - key: S03E01
         source: "magnet:..."
   monoS01:
