@@ -70,7 +70,7 @@ class MetaConfig:
 class Config:
     meta: MetaConfig
     series: List[Series]
-    _config_files: Optional[List[Path]] = None  # fill by load_config, for debug only.
+    _from_config_files: Optional[List[Path]] = None  # fill by load_config, for debug only.
 
 
 def parse_config(raw: Dict) -> Config:
@@ -119,8 +119,8 @@ def parse_config(raw: Dict) -> Config:
             dir=series_dir,
             episodes=episodes))
 
-    _config_files = raw.get('_config_files', None)
-    return Config(meta=meta, series=series_list, _config_files=_config_files)
+    _from_config_files = raw.get('_from_config_files', None)
+    return Config(meta=meta, series=series_list, _from_config_files=_from_config_files)
 
 
 def load_config(paths: str) -> Config:
@@ -167,7 +167,7 @@ def load_config(paths: str) -> Config:
             part = yaml.safe_load(f)
             _deep_merge_dict(part, raw)
 
-    raw["_config_files"] = config_files  # for debug only
+    raw["_from_config_files"] = config_files  # for debug only
 
     return parse_config(raw)
 
