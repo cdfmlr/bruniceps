@@ -122,6 +122,10 @@ def load_config(paths: str) -> Config:
     raw = {}
     for config_path in paths.split(CONFIG_PATH_SPLITTER):
         config_path = config_path.strip()
+        # tolerant towards tailing "," and ",," typo
+        # should be friendly to `-c "$(find config -type f -name '*.yaml' | tr '\n' ',')"` and `-c "$(ls -xm *.yaml)"`.
+        if not config_path:
+            continue
         with open(config_path, 'r') as f:
             part = yaml.safe_load(f)
             raw.update(part)
