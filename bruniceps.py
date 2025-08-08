@@ -32,7 +32,7 @@ CONFIG_PATH_SPLITTER = ","
 
 print = partial(print, flush=True)
 Path.__repr__ = lambda self: str(self)  # PosixPath('/path') -> '/path', yes im breaking it. sue me.
-run = partial(subprocess.run, check=True, stdout=subprocess.STDOUT, stderr=subprocess.STDOUT)
+run = partial(subprocess.run, check=True, stderr=subprocess.STDOUT)
 
 
 @dataclass
