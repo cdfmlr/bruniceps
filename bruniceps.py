@@ -31,6 +31,7 @@ CONFIG_ENV_VAR = "BRUNICEPS_CONFIG"
 CONFIG_PATH_SPLITTER = ","
 
 print = partial(print, flush=True)
+Path.__repr__ = lambda self: str(self)  # PosixPath('/path') -> '/path', yes im breaking it. sue me.
 
 
 @dataclass
@@ -282,8 +283,12 @@ def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[st
     if not encoding_args:
         shutil.copy(input_path, output_path)
     else:
-        subprocess.run(ffmpeg_cmd.split() + ['-i', str(input_path)] + encoding_args.split() + [str(output_path)],
-                       check=True)
+        subprocess.run(
+            ffmpeg_cmd.split() +
+            ['-i', str(input_path)] +
+            encoding_args.split() +
+            [str(output_path)],
+            check=True)
 
 
 def clear_task_dir(task_dir: Path):
@@ -309,7 +314,7 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     ensure_dir(target_dir)
 
     if file_exists_with_basename(target_dir, base_filename):
-        print(f"[{task_id}] Skipping, target ({base_filename}) already exists in {target_dir}.")
+        print(f"[{task_id}] Skipping, target {{{base_filename}}} already exists in '{target_dir}'.")
         return
 
     # 1. Download it
@@ -319,7 +324,7 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     downloaded_dir = task_dir / "downloaded"
     ensure_dir(downloaded_dir)
 
-    print(f"[{task_id}] Downloading to {downloaded_dir} from {ep.source} by {meta.aria2c_cmd}")
+    print(f"[{task_id}] Downloading to '{downloaded_dir}' from '{ep.source}' by ({meta.aria2c_cmd})...")
     downloaded_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
 
     # 2. Encode it
@@ -332,22 +337,22 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
 
     encoding_args = meta.encoding_profiles.get(ep.encoding)
 
-    print(f"[{task_id}] Encoding {downloaded_file} to {encoded_file} by {meta.ffmpeg_cmd}")
+    print(f"[{task_id}] Encoding '{downloaded_file}' to '{encoded_file}' by ({meta.ffmpeg_cmd})...")
     encode_video(downloaded_file, encoded_file, encoding_args, meta.ffmpeg_cmd)
 
     # 3. Move it to the target
 
     target_file = target_dir / f"{base_filename}.{ext}"
 
-    print(f"[{task_id}] Moving {encoded_file} to {target_file}")
+    print(f"[{task_id}] Moving '{encoded_file}' to '{target_file}'...")
     shutil.copy(str(encoded_file), str(target_file))
-
-    print(f"[{task_id}] Done: {target_file}")
 
     # 4. Clear the tmp dir
 
-    print(f"[{task_id}] Clearing temp task working dir: {task_dir}")
+    print(f"[{task_id}] Clearing temp task working dir: '{task_dir}'...")
     clear_task_dir(task_dir)
+
+    print(f"[{task_id}] Done: '{target_file}'.")
 
 
 def sync(config: Config):
