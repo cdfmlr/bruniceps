@@ -32,6 +32,7 @@ CONFIG_PATH_SPLITTER = ","
 
 print = partial(print, flush=True)
 Path.__repr__ = lambda self: str(self)  # PosixPath('/path') -> '/path', yes im breaking it. sue me.
+run = partial(subprocess.run, check=True, stdout=subprocess.STDOUT, stderr=subprocess.STDOUT)
 
 
 @dataclass
@@ -262,14 +263,14 @@ def file_exists_with_basename(directory: Path, base_name: str) -> bool:
 
 
 def download_source(source_url, output_dir: Path, aria2c_cmd: str) -> Path:
-    subprocess.run(aria2c_cmd.split() + [
+    run(aria2c_cmd.split() + [
         '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
         # '--summary-interval=0',
         # '--show-console-readout=false',
         source_url
-    ], check=True)
+    ])
 
     files = list(output_dir.iterdir())
     if not files:
@@ -283,12 +284,8 @@ def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[st
     if not encoding_args:
         shutil.copy(input_path, output_path)
     else:
-        subprocess.run(
-            ffmpeg_cmd.split() +
-            ['-i', str(input_path)] +
-            encoding_args.split() +
-            [str(output_path)],
-            check=True)
+        run(ffmpeg_cmd.split() + ['-i', str(input_path)] +
+            encoding_args.split() + [str(output_path)])
 
 
 def clear_task_dir(task_dir: Path):
