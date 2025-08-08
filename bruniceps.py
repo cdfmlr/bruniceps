@@ -284,8 +284,12 @@ def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[st
     if not encoding_args:
         shutil.copy(input_path, output_path)
     else:
+        # `ffmpeg -nostdin` or `ffmpeg ... < /dev/null` is required to run in bg
+        # See also:
+        # - https://stackoverflow.com/questions/16523746/ffmpeg-hangs-when-run-in-background
+        # - https://ffmpeg.org/ffmpeg-all.html#Main-options (search stdin and nostdin on the page)
         run(ffmpeg_cmd.split() + ['-i', str(input_path)] +
-            encoding_args.split() + [str(output_path)])
+            encoding_args.split() + [str(output_path)], stdin=subprocess.DEVNULL)
 
 
 def clear_task_dir(task_dir: Path):
