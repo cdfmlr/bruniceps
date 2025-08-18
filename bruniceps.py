@@ -289,7 +289,8 @@ def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[st
         # - https://stackoverflow.com/questions/16523746/ffmpeg-hangs-when-run-in-background
         # - https://ffmpeg.org/ffmpeg-all.html#Main-options (search stdin and nostdin on the page)
         run(ffmpeg_cmd.split() + ['-i', str(input_path)] +
-            encoding_args.split() + [str(output_path)], stdin=subprocess.DEVNULL)
+            encoding_args.split() + [str(output_path)],
+            stdin=subprocess.DEVNULL)
 
 
 def clear_task_dir(task_dir: Path):
@@ -365,6 +366,7 @@ def sync(config: Config):
         catalog = config.meta.catalogs[series.catalog]
         for ep in series.episodes:
             process_episode(ep, series, catalog, config.meta)
+    print("[sync] done.")
 
 
 def dry_run(config: Config):
