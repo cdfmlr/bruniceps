@@ -5,11 +5,12 @@
 bruniceps (Bunting/Bruniceps Resource Utility for New Items Copying, Encoding, Placing and Structuring) 是一个用于下载、转码、整理剧集/电影的工具。
 
 - bruniceps 是 bunting 系统的一部分
-- bruniceps 依赖于 ffmpeg, aria2c 以及 pyyaml
+- bruniceps 依赖于 ffmpeg（包括 ffprobe）, aria2c 以及 pyyaml
 
 ## Install
 
 - ffmpeg >= 6.1.1 (因为需要默认编译了 SVT-AV1)
+  - ffprobe (通常应该是和 ffmpeg 一起安装的，无需单独安装)
 - aria2c >= 1.37.0 (因为只测试了这个版本)
 - python >= 3.13 (因为只测试了这个版本)
    - pyyaml >= 6.0.2 (因为只测试了这个版本)

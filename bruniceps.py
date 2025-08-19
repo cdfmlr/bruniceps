@@ -4,11 +4,14 @@ bruniceps is a tool for managing tv series and other media resources.
 """
 
 import argparse
+import hashlib
+import json
 import os
 import shutil
 import subprocess
 import tempfile
 import warnings
+from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass, asdict
 from functools import partial
@@ -21,6 +24,7 @@ from yaml.representer import BaseRepresenter
 DEFAULT_CONFIG_FILE = 'bruniceps.yaml'
 DEFAULT_ARIA2C_CMD = "aria2c"
 DEFAULT_FFMPEG_CMD = "ffmpeg"
+DEFAULT_FFPROBE_CMD = "ffprobe"
 DEFAULT_TMP_DIR = Path(tempfile.gettempdir()) / "bruniceps"
 DEFAULT_ENCODING_PROFILES = {
     "default": "-map 0 -c:v libsvtav1 -crf 32 -c:a aac -ac 2 -c:s copy",  # av1
@@ -64,6 +68,7 @@ class MetaConfig:
     tmp_dir: Path
     aria2c_cmd: str
     ffmpeg_cmd: str
+    ffprobe_cmd: str
     encoding_profiles: Dict[str, Optional[str]]
     catalogs: Dict[str, Catalog]
 
@@ -93,6 +98,7 @@ def parse_config(raw: Dict) -> Config:
         tmp_dir=tmp_dir,
         aria2c_cmd=meta_raw.get('aria2c_cmd', DEFAULT_ARIA2C_CMD),
         ffmpeg_cmd=meta_raw.get('ffmpeg_cmd', DEFAULT_FFMPEG_CMD),
+        ffprobe_cmd=meta_raw.get('ffprobe_cmd', DEFAULT_FFPROBE_CMD),
         encoding_profiles=encoding_profiles,
         catalogs=catalogs
     )
@@ -267,6 +273,7 @@ def download_source(source_url, output_dir: Path, aria2c_cmd: str) -> Path:
         '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
+        '--check-integrity=true',
         # '--summary-interval=0',
         # '--show-console-readout=false',
         source_url
@@ -291,6 +298,100 @@ def encode_video(input_path: Path, output_path: Path, encoding_args: Optional[st
         run(ffmpeg_cmd.split() + ['-i', str(input_path)] +
             encoding_args.split() + [str(output_path)],
             stdin=subprocess.DEVNULL)
+
+
+# verify_* methods are asserts: returns None silently if validation passed, otherwise raise a ValueError.
+
+def verify_video(video: Path, ffprobe_cmd: str) -> None:
+    """
+    Verify that a video file is a valid container.
+
+    :param video: video file path
+    :param ffprobe_cmd: ffprobe command or executable path
+    :return: silent None if valid, raises ValueError if not
+    :raises ValueError: video verification failed
+    """
+    try:
+        run(ffprobe_cmd.split() + [
+            "-v", "error",
+            "-show_format",
+            "-show_streams",
+            str(video)])
+    # except subprocess.CalledProcessError:
+    #     return False
+    except Exception as e:
+        # print("[verify_video] failed with unexpected error:", e)
+        # return False
+        raise ValueError(f"Error verifying '{video}': {e}")
+
+
+def get_video_duration(video: Path, ffprobe_cmd: str) -> float:
+    """
+    get video duration from ffprobe.
+
+    :param video: video file path
+    :param ffprobe_cmd: ffprobe command or executable path
+    :return: the media duration in seconds as a float.
+    :raises: ValueError if duration is missing or ffprobe fails.
+    """
+    try:
+        result = run(
+            ffprobe_cmd.split() + [
+                "-v", "error",
+                "-select_streams", "v:0",  # check first video stream
+                "-show_entries", "format=duration",
+                "-of", "json",
+                str(video)
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        data = json.loads(result.stdout)
+        duration = float(data["format"]["duration"])
+        return duration
+    except Exception as e:
+        raise ValueError(f"Failed to get duration for '{video}': {e}")
+
+
+def verify_encoded_video_duration(src: Path, dst: Path, ffprobe_cmd: str) -> None:
+    """
+    verify that the encoded video file is valid and integrity.
+
+    :param src: video file before encoding
+    :param dst: encoded video file
+    :param ffprobe_cmd: ffprobe command or executable path
+    :return: None if valid, raises ValueError if not
+    :raises ValueError: video verification failed
+    """
+    src_duration = get_video_duration(src, ffprobe_cmd=ffprobe_cmd)
+    dst_duration = get_video_duration(dst, ffprobe_cmd=ffprobe_cmd)
+    if abs(src_duration - dst_duration) > 5:  # seconds tolerance
+        raise ValueError(f"Bad encoded video: Duration mismatch: src={src_duration}s dst={dst_duration}s")
+
+
+def files_identical(f1: Path, f2: Path) -> bool:
+    # 1. Quick check on file size with a reasonable tolerance.
+    if abs(f1.stat().st_size - f2.stat().st_size) > (1024 * 1024):  # bytes
+        return False
+
+    # 2. If sizes are close enough, perform a full hash comparison.
+    h1, h2 = hashlib.md5(), hashlib.md5()
+    with open(f1, "rb") as a, open(f2, "rb") as b:
+        for chunk in iter(lambda: a.read(8192), b""):
+            h1.update(chunk)
+        for chunk in iter(lambda: b.read(8192), b""):
+            h2.update(chunk)
+    return h1.digest() == h2.digest()
+
+
+def verify_copied_file_identical(src: Path, dst: Path) -> None:
+    """
+    :return: None if src and dst are identical, raises ValueError if not
+    :raises ValueError: src and dst are not identical
+    """
+    if not files_identical(src, dst):
+        raise ValueError(f"Copied dst='{dst}' is not identical to src='{src}'")
 
 
 def clear_task_dir(task_dir: Path):
@@ -329,6 +430,9 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Downloading to '{downloaded_dir}' from '{ep.source}' by ({meta.aria2c_cmd})...")
     downloaded_file = download_source(ep.source, downloaded_dir, meta.aria2c_cmd)
 
+    print(f"[{task_id}] Verifying video file '{downloaded_file}'...")
+    verify_video(downloaded_file, ffprobe_cmd=meta.ffprobe_cmd)
+
     # 2. Encode it
 
     encoded_dir = task_dir / "encoded"
@@ -342,12 +446,22 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Encoding '{downloaded_file}' to '{encoded_file}' by ({meta.ffmpeg_cmd})...")
     encode_video(downloaded_file, encoded_file, encoding_args, meta.ffmpeg_cmd)
 
+    print(f"[{task_id}] Verifying video file '{downloaded_file}'...")
+    verify_video(encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
+
+    print(
+        f"[{task_id}] Verifying encoded video file dst='{encoded_file}' duration comparing to src='{downloaded_file}'...")
+    verify_encoded_video_duration(downloaded_file, encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
+
     # 3. Move it to the target
 
     target_file = target_dir / f"{base_filename}.{ext}"
 
     print(f"[{task_id}] Moving '{encoded_file}' to '{target_file}'...")
     shutil.copy(str(encoded_file), str(target_file))
+
+    print(f"[{task_id}] Verifying copied file dst='{target_file}' from src='{encoded_file}'...")
+    verify_copied_file_identical(encoded_file, target_file)
 
     # 4. Clear the tmp dir
 
@@ -362,17 +476,28 @@ def sync(config: Config):
     defined in configuration file into destination directories.
     Skips any media that already exists at the destination.
     """
+    errors: Dict[str, str] = OrderedDict()  # "catalog/series/ep": "error msg"
+
     for series in config.series:
         catalog = config.meta.catalogs[series.catalog]
         for ep in series.episodes:
-            process_episode(ep, series, catalog, config.meta)
-    print("[sync] done.")
+            try:
+                process_episode(ep, series, catalog, config.meta)
+            except Exception as e:
+                errors[f"{catalog.key}/{series.key}/{ep.key}"] = str(e)
+
+    if not errors:
+        print("[sync] Done. ✅ All episodes succeeded.")
+    else:
+        print("[sync] Done. ❌ Some episodes failed: \n")
+        for key, error in errors.items():
+            print(f"   - ⚠️ [{key}]: {error}")
 
 
 def dry_run(config: Config):
     """subcommand dry-run prints the loaded config and exit."""
     print("[dry-run] Config loaded:\n\n", spprint_config(config), sep="", end="\n\n")
-    print("[dry-run] done.")
+    print("[dry-run] Done.")
 
 
 def main():
