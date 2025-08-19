@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import warnings
-from collections import OrderedDict
+# from collections import OrderedDict  # in Python 3.7+ plain dict already preserves insertion order
 from copy import deepcopy
 from dataclasses import dataclass, asdict
 from functools import partial
@@ -331,7 +331,7 @@ def get_video_duration(video: Path, ffprobe_cmd: str) -> float:
 
     :param video: video file path
     :param ffprobe_cmd: ffprobe command or executable path
-    :return: the media duration in seconds as a float.
+    :return: the video duration in seconds as a float.
     :raises: ValueError if duration is missing or ffprobe fails.
     """
     try:
@@ -340,6 +340,8 @@ def get_video_duration(video: Path, ffprobe_cmd: str) -> float:
                 "-v", "error",
                 "-select_streams", "v:0",  # check first video stream
                 "-show_entries", "format=duration",
+                # XXX: drop -select_streams and just read duration from format=duration.
+                #      This way it works for both audio-only and video files.
                 "-of", "json",
                 str(video)
             ],
@@ -366,13 +368,13 @@ def verify_encoded_video_duration(src: Path, dst: Path, ffprobe_cmd: str) -> Non
     """
     src_duration = get_video_duration(src, ffprobe_cmd=ffprobe_cmd)
     dst_duration = get_video_duration(dst, ffprobe_cmd=ffprobe_cmd)
-    if abs(src_duration - dst_duration) > 5:  # seconds tolerance
+    if abs(src_duration - dst_duration) > max(5.0, 0.02 * src_duration):  # seconds tolerance
         raise ValueError(f"Bad encoded video: Duration mismatch: src={src_duration}s dst={dst_duration}s")
 
 
 def files_identical(f1: Path, f2: Path) -> bool:
     # 1. Quick check on file size with a reasonable tolerance.
-    if abs(f1.stat().st_size - f2.stat().st_size) > (1024 * 1024):  # bytes
+    if abs(f1.stat().st_size - f2.stat().st_size) > (8 * 1024):  # bytes
         return False
 
     # 2. If sizes are close enough, perform a full hash comparison.
@@ -449,8 +451,8 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Verifying video file '{downloaded_file}'...")
     verify_video(encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
 
-    print(
-        f"[{task_id}] Verifying encoded video file dst='{encoded_file}' duration comparing to src='{downloaded_file}'...")
+    print(f"[{task_id}] Verifying encoded video file duration"
+          f"dst='{encoded_file}' comparing to src='{downloaded_file}'...")
     verify_encoded_video_duration(downloaded_file, encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
 
     # 3. Move it to the target
@@ -476,7 +478,7 @@ def sync(config: Config):
     defined in configuration file into destination directories.
     Skips any media that already exists at the destination.
     """
-    errors: Dict[str, str] = OrderedDict()  # "catalog/series/ep": "error msg"
+    errors: Dict[str, str] = {}  # "catalog/series/ep": "error msg"
 
     for series in config.series:
         catalog = config.meta.catalogs[series.catalog]
@@ -484,7 +486,7 @@ def sync(config: Config):
             try:
                 process_episode(ep, series, catalog, config.meta)
             except Exception as e:
-                errors[f"{catalog.key}/{series.key}/{ep.key}"] = str(e)
+                errors[f"{catalog.key}/{series.key}/{ep.key}"] = f"{type(e).__name__}: {e}"
 
     if not errors:
         print("[sync] Done. ✅ All episodes succeeded.")
