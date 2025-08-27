@@ -316,6 +316,7 @@ def verify_video(video: Path, ffprobe_cmd: str) -> None:
             "-v", "error",
             "-show_format",
             "-show_streams",
+            "-of", "json",
             str(video)])
     # except subprocess.CalledProcessError:
     #     return False
@@ -451,7 +452,7 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Verifying video file '{downloaded_file}'...")
     verify_video(encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
 
-    print(f"[{task_id}] Verifying encoded video file duration"
+    print(f"[{task_id}] Verifying encoded video file duration: "
           f"dst='{encoded_file}' comparing to src='{downloaded_file}'...")
     verify_encoded_video_duration(downloaded_file, encoded_file, ffprobe_cmd=meta.ffprobe_cmd)
 
@@ -462,7 +463,7 @@ def process_episode(ep: Episode, series: Series, catalog: Catalog, meta: MetaCon
     print(f"[{task_id}] Moving '{encoded_file}' to '{target_file}'...")
     shutil.copy(str(encoded_file), str(target_file))
 
-    print(f"[{task_id}] Verifying copied file dst='{target_file}' from src='{encoded_file}'...")
+    print(f"[{task_id}] Verifying copied file: dst='{target_file}' from src='{encoded_file}'...")
     verify_copied_file_identical(encoded_file, target_file)
 
     # 4. Clear the tmp dir
@@ -486,6 +487,7 @@ def sync(config: Config):
             try:
                 process_episode(ep, series, catalog, config.meta)
             except Exception as e:
+                print(f"[sync] ❌ process episode failed: {catalog.key}/{series.key}/{ep.key}: {e}")
                 errors[f"{catalog.key}/{series.key}/{ep.key}"] = f"{type(e).__name__}: {e}"
 
     if not errors:
