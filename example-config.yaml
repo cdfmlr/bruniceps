@@ -33,7 +33,7 @@ series:
         format: mp4|mkv  # optional
         # optional: episode.dir overrides series.dir & catalog.dir/series.title
         dir: "/put/this/episode/to/somewhere/special"
-      - key: S03E01
+      - key: S03E02
         source: "magnet:..."
   monoS01:
     title: "mono"
