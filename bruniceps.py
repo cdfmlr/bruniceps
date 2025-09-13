@@ -495,7 +495,7 @@ def sync(config: Config):
     else:
         print("[sync] Done. ❌ Some episodes failed: \n")
         for key, error in errors.items():
-            print(f"   - ⚠️ [{key}]: {error}")
+            print(f"   - ⚠️  [{key}]: {error}")
 
 
 def dry_run(config: Config):
