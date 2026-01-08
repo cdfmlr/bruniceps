@@ -273,7 +273,7 @@ def download_source(source_url, output_dir: Path, aria2c_cmd: str) -> Path:
         '--dir=' + str(output_dir),
         '--auto-file-renaming=false',
         '--allow-overwrite=true',
-        '--check-integrity=true',
+        # '--check-integrity=true',  # this is for http/ftp downloads with --checksum info, not for magnet/torrent
         # '--summary-interval=0',
         # '--show-console-readout=false',
         source_url
@@ -316,7 +316,7 @@ def verify_video(video: Path, ffprobe_cmd: str) -> None:
             "-v", "error",
             "-show_format",
             "-show_streams",
-            "-of", "json",
+            "-of", "csv",
             str(video)])
     # except subprocess.CalledProcessError:
     #     return False
