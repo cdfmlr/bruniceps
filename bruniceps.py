@@ -171,8 +171,11 @@ def load_config(paths: str) -> Config:
 
     raw = {}  # config in a dict
     for config_file in config_files:
+        # print(f"# DBG: load config file: {config_file}")
         with open(config_file, 'r') as f:
             part = yaml.safe_load(f)
+            if not part:
+                continue
             _deep_merge_dict(part, raw)
 
     raw["_from_config_files"] = config_files  # for debug only
@@ -209,6 +212,8 @@ def _deep_merge_dict(source: Dict, destination: Dict) -> Dict:
 
     :return: dict: Updated destination.
     """
+    if not source:
+        return destination
 
     for key, value in source.items():
         if isinstance(value, dict):  # recurse for dicts
