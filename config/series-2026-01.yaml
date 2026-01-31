@@ -2,7 +2,7 @@
 # a episode will be download to {catalog.dir}/{series.title}/"{series.title} {episode.key}.{epidode.format}"
 series:
   frierenS01P3:
-    title: "葬送のフリーレン"
+    title: "Sousou no Frieren"
     # https://bangumi.tv/subject/515759
     # https://www.themoviedb.org/tv/209867/season/1
     catalog: tv
